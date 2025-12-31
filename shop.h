@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
 
     // get the option value
     const char *filename;
-    if (shop_sget('n', NULL, &filename)) {
+    if (shop_sget('f', NULL, &filename)) {
         printf("filename: %s\n", filename);
     }
 
