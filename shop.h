@@ -1,0 +1,238 @@
+/*
+shop.h - v0.01 - Dylaris 2025
+===================================================
+
+BRIEF:
+  A simple cmdline flag parser in C99. Only support short
+  option, like '-h'.
+
+NOTICE:
+  Not compatible with C++.
+
+USAGE:
+  In exactly one source file, define the implementation macro
+  before including this header:
+  ```
+    #define SHOP_IMPLEMENTATION
+    #include "shop.h"
+  ```
+  In other files, just include the header without the macro.
+
+EXAMPLE:
+```c
+// ./main -hn 1
+int main(int argc, char **argv) {
+    shop_option_t options[] = {
+        { .name = 'h', .require_arg = false, .info = "Print help information" },
+        { .name = 'n', .require_arg = true,  .info = "A number" },
+        { .name = 'f', .require_arg = true,  .info = "File" },
+        SHOP_END
+    };
+    shop_set(options);
+
+    shop_track(argc, argv);
+
+    // get the option value
+    const char *filename;
+    if (shop_sget('n', NULL, &filename)) {
+        printf("filename: %s\n", filename);
+    }
+
+    // option callback
+    if (shop_use('h')) shop_help();
+    if (shop_use('n')) { ... };
+}
+```
+
+HISTORY:
+
+LICENSE:
+  See the end of this file for further details.
+*/
+
+#ifndef SHOP_H
+#define SHOP_H
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+typedef struct {
+    char name;
+    const char *info;
+    bool used;
+    bool require_arg;
+    const char *arg;
+} shop_option_t;
+
+#define SHOP_ASSERT(expr, fmt, ...)                         \
+    do {                                                    \
+        if (expr) break;                                    \
+        fprintf(stderr, "ERROR: " fmt "\n", ##__VA_ARGS__); \
+        exit(EXIT_FAILURE);                                 \
+    } while (0)
+
+#define SHOP_END { .name = '\0', .require_arg = false, .info = NULL }
+
+// shop_set - set the predifined options to global variable
+// @opts: predifined option array
+void shop_set(shop_option_t *opts);
+
+// shop_reset - reset the state (just clear the global variable)
+void shop_reset(void);
+
+// shop_use - check if the option is used
+// @name: option name
+// Return: true if option is used, otherwise false
+bool shop_use(char name);
+
+// shop_track - track the cmdline arguments and update option's state
+// @argc: number of argument
+// @argv: argument string array
+// Note: supports option combination (e.g., -abc).
+//       in combined options, only the **last one** may take an argument.
+//       example: '-fdata.txt' or '-f data.txt' where 'f' requires an argument.
+void shop_track(int argc, char **argv);
+
+// shop_print - print all options' state
+void shop_print(void);
+
+// shop_help - print the help message
+// Note: '*' before the option means it require a parameter
+void shop_help(void);
+
+// shop_sget - get the option value through scanf format (sscanf)
+// Note: support an extra format "%b" for boolean type
+//       steal from https://github.com/rxi/ini/blob/master/src/ini.c
+// Return: true if get the value, false otherwise
+bool shop_sget(char name, const char *scanfmt, void *dst);
+
+#endif // SHOP_H
+
+#ifdef SHOP_IMPLEMENTATION
+
+static unsigned char shop__map[255] = {0};
+static shop_option_t *shop__options = NULL;
+
+void shop_set(shop_option_t *opts) {
+    shop__options = opts;
+    for (const shop_option_t *opt_ptr = opts; opt_ptr->name != '\0'; opt_ptr++) {
+        shop__map[(int) opt_ptr->name] = (unsigned char) (opt_ptr - opts) + 1;
+    }
+}
+
+void shop_reset(void) {
+    shop__options = NULL;
+    memset(&shop__map, 0, sizeof(shop__map));
+}
+
+shop_option_t *shop__find(char name) {
+    unsigned char idx = shop__map[(int) name];
+    if (idx == 0) return NULL;
+    return &shop__options[idx - 1];
+}
+
+bool shop_use(char name) {
+    const shop_option_t *opt = shop__find(name);
+    if (opt && opt->used) return true;
+    return false;
+}
+
+void shop_track(int argc, char **argv) {
+    for (int i = 1; i < argc; i++) {
+        const char *arg = argv[i];
+
+        // skip non-option arg
+        if (arg[0] != '-') continue;
+
+        // handle current option (may combined, -rhp)
+        bool has_param_in_next_arg = false;
+        for (int j = 1; arg[j] != '\0'; j++) {
+            char name = arg[j];
+            shop_option_t *opt = shop__find(name);
+            SHOP_ASSERT(opt, "unknown option: '-%c'", name);
+            opt->used = true;
+
+            // check if the option param is in next cmdline arg
+            // -f data.txt or -fdata.txt
+            if (opt->require_arg) {
+                if (arg[j+1] != '\0') opt->arg = arg + j + 1;
+                else has_param_in_next_arg = true;
+                break;
+            }
+        }
+
+        // handle next option argument if it is
+        if (has_param_in_next_arg) {
+            i++; // skip current option
+            SHOP_ASSERT(i < argc, "option '%s' require argument but not supply", arg);
+            // find the option which need this argument
+            for (int j = 1; arg[j] != '\0'; j++) {
+                shop_option_t *opt = shop__find(arg[j]);
+                if (opt && opt->require_arg && !opt->arg) {
+                    opt->arg = argv[i];
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void shop_print(void) {
+    for (const shop_option_t *opt_ptr = shop__options; opt_ptr->name != '\0'; opt_ptr++) {
+        printf("-%c %s [%s] [%s] [%s]\n", opt_ptr->name, opt_ptr->info,
+               opt_ptr->used ? "uesd" : "no used",
+               opt_ptr->require_arg ? "required" : "no required",
+               opt_ptr->arg);
+    }
+}
+
+void shop_help(void) {
+    for (const shop_option_t *opt_ptr = shop__options; opt_ptr->name != '\0'; opt_ptr++) {
+        printf("%c -%c %s\n", opt_ptr->require_arg ? '*' : ' ', opt_ptr->name, opt_ptr->info);
+    }
+}
+
+bool shop_sget(char name, const char *scanfmt, void *dst) {
+    const shop_option_t *opt = shop__find(name);
+    if (!opt || !opt->used || !opt->require_arg || !opt->arg) return false;
+
+    if (!scanfmt || strcmp(scanfmt, "%s") == 0) {
+        *((const char**) dst) = opt->arg;
+    } else if (strcmp(scanfmt, "%b") == 0) {
+        bool value = (strcmp(opt->arg, "true") == 0 ||
+                      strcmp(opt->arg, "yes") == 0 ||
+                      strcmp(opt->arg, "1") == 0 ||
+                      strcmp(opt->arg, "on") == 0);
+        *((bool *) dst) = value;
+    } else {
+        sscanf(opt->arg, scanfmt, dst);
+    }
+
+    return true;
+}
+
+#endif // SHOP_IMPLEMENTATION
+
+/*
+------------------------------------------------------------------------------
+This software is available under MIT license.
+------------------------------------------------------------------------------
+Copyright (c) 2025 Dylaris
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, COOKING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
