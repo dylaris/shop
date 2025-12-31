@@ -8,8 +8,8 @@
 
 int main(int argc, char **argv) {
     shop_option_t options[] = {
-        { .name = 'h', .require_arg = false, .info = "Show help" },
-        { .name = 'v', .require_arg = false, .info = "Verbose mode" },
+        { .name = 'h', .require_arg = false, .info = "Show this help message with detailed information about all options" },
+        { .name = 'v', .require_arg = false, .info = "Enable verbose output mode for debugging purposes" },
         { .name = 'n', .require_arg = true,  .info = "Number (int)" },
         { .name = 'f', .require_arg = true,  .info = "Filename (string)" },
         { .name = 'b', .require_arg = true,  .info = "Boolean flag" },
@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
     printf("=== Parsing Results ===\n");
 
     if (shop_use('v')) {
-        printf("Verbose mode: ON\n");
+        shop_verbose();
     }
 
     // test number
