@@ -7,17 +7,15 @@
 #include "shop.h"
 
 int main(int argc, char **argv) {
-    shop_option_t options[] = {
-        { .name = 'h', .require_arg = false, .info = "Show this help message with detailed information about all options" },
-        { .name = 'v', .require_arg = false, .info = "Enable verbose output mode for debugging purposes" },
-        { .name = 'n', .require_arg = true,  .info = "Number (int)" },
-        { .name = 'f', .require_arg = true,  .info = "Filename (string)" },
-        { .name = 'b', .require_arg = true,  .info = "Boolean flag" },
-        { .name = 'd', .require_arg = true,  .info = "Double value" },
-        SHOP_END
-    };
+    shop_set("vn:f:b:p:h");
 
-    shop_set(options);
+    shop_desc('h', NULL, "Show this help message with detailed information about all options");
+    shop_desc('v', NULL, "Enable verbose output mode for debugging purposes");
+    shop_desc('n', "%d", "Number (int)");
+    shop_desc('f', "%s", "Filename (string)");
+    shop_desc('b', "%b", "Boolean flag");
+    shop_desc('p', "%f", "Float point");
+
     shop_track(argc, argv);
 
     // test help
@@ -34,25 +32,25 @@ int main(int argc, char **argv) {
 
     // test number
     int number;
-    if (shop_sget('n', "%d", &number)) {
+    if (shop_sget('n', 0, &number)) {
         printf("Number: %d\n", number);
     }
 
     // test string
     const char *filename;
-    if (shop_sget('f', NULL, &filename)) {
-        printf("Filename: %s\n", filename);
+    shop_foreach('f', i, &filename) {
+        printf("Filename[%ld]: %s\n", i, filename);
     }
 
     // test flag
     bool flag;
-    if (shop_sget('b', "%b", &flag)) {
-        printf("Boolean flag: %s\n", flag ? "true" : "false");
+    shop_foreach('b', i, &flag) {
+        printf("Boolean flag[%ld]: %s\n", i, flag ? "true" : "false");
     }
 
     // test float
-    double value;
-    if (shop_sget('d', "%lf", &value)) {
+    float value;
+    if (shop_sget('p', 0, &value)) {
         printf("Double value: %.2f\n", value);
     }
 
@@ -61,5 +59,6 @@ int main(int argc, char **argv) {
         printf("Option -x not used\n");
     }
 
+    shop_free();
     return 0;
 }
